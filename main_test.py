@@ -1,6 +1,6 @@
 import os
 import pytest
-from main import *
+from main import User, UserDB
 
 
 

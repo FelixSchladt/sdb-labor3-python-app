@@ -110,7 +110,7 @@ class UserDB:
         res = self.cur.fetchone()
         if res is None:
             return None
-        return res[0] 
+        return res[0]
 
     def user_exists(self, username: str):
         query = "SELECT username FROM user WHERE username = ?"
@@ -132,7 +132,7 @@ class UserDB:
         query = "UPDATE user SET password = ? WHERE username = ?"
         self.cur.execute(query, (new_pwd_hash, user.username))
         self.con.commit()
-        
+
 class User:
     def __init__(self, db: UserDB):
         self.db = db
