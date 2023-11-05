@@ -1,8 +1,8 @@
-import mariadb
 import sys
 import os
 import getpass
 import argparse
+import mariadb
 from Crypto.Hash import SHA512
 
 
@@ -57,7 +57,7 @@ class CLI:
             CLI.delete_last_line()
             return password
         print("Passwords do not match")
-        exit(-1)
+        sys.exit(-1)
 
     @staticmethod
     def enter_password():
@@ -71,7 +71,6 @@ class CLI:
         username = input().strip()
         CLI.delete_last_line()
         return username
-
 
 
 class UserDB:
@@ -94,7 +93,7 @@ class UserDB:
             self.cur = self.con.cursor()
         except mariadb.Error as ex:
             print(f"An error occurred while connecting to MariaDB: {ex}")
-            exit(-1)
+            sys.exit(-1)
 
     def authenticate(self, username, pwd_hash) -> bool:
         query = "SELECT username, password FROM user WHERE username = ?"
@@ -108,7 +107,10 @@ class UserDB:
     def get_salt(self, username: str):
         query = "SELECT salt FROM user WHERE username = ?"
         self.cur.execute(query, (username,))
-        return self.cur.fetchone()[0]
+        res = self.cur.fetchone()
+        if res is None:
+            return None
+        return res[0] 
 
     def user_exists(self, username: str):
         query = "SELECT username FROM user WHERE username = ?"
@@ -116,19 +118,21 @@ class UserDB:
         return len(self.cur.fetchall()) > 0
 
     def create_user(self, username, pwd_hash, salt):
+        if self.user_exists(username):
+            print(f"Username {username} already taken")
+            sys.exit(-1)
         query = "INSERT INTO user (username, password, admin, lastpasswordchange, salt, created_at) VALUES (?, ?, 0, NOW(), ?, NOW())"
         self.cur.execute(query, (username, pwd_hash, salt))
         self.con.commit()
 
-    def change_password(self, user, new_pwd_hash, salt):
-        if not (self.authenticate(user.username, user.pwd_hash)):
+    def change_password(self, user, new_pwd_hash):
+        if not self.authenticate(user.username, user.pwd_hash):
             print("Error: User could not be authenticated")
-            exit(-1)
+            sys.exit(-1)
         query = "UPDATE user SET password = ? WHERE username = ?"
         self.cur.execute(query, (new_pwd_hash, user.username))
         self.con.commit()
-
-
+        
 class User:
     def __init__(self, db: UserDB):
         self.db = db
@@ -155,13 +159,13 @@ class User:
             self.username = username
             self.pwd_hash = pwd_hash
         return auth
-            
+
     def create_user(self):
         self.username = CLI.enter_username()
         if self.db.user_exists(self.username):
             print(f"Username {self.username} is already taken")
-            exit(-1)
-             
+            sys.exit(-1)
+
         psd  = CLI.new_password()
         salt = os.urandom(32).hex()
         self.pwd_hash = User.hash_pwd(psd, salt)
@@ -173,12 +177,13 @@ class User:
         if not salt:
             print(f"Error user \"{self.username}\" not found")
             return False
-      
-        new_psd_hash = User.hash_pwd(new_psd, salt)
-        self.db.change_password(self, new_psd_hash, salt)
-        self.psd_hash = new_psd_hash
 
-        
+        new_psd_hash = User.hash_pwd(new_psd, salt)
+        self.db.change_password(self, new_psd_hash)
+        self.pwd_hash = new_psd_hash
+        return True
+
+
 def main():
     db = UserDB()
     user = User(db)
@@ -188,18 +193,19 @@ def main():
         print("Creating new useraccount")
         user.create_user()
         print("User account created")
-        exit(0)
+        sys.exit(0)
     if not user.login():
         print("Invalid credentials")
-        exit(-1)
+        sys.exit(-1)
 
     print("Successfully logged in")
     if args.change:
-        print("New Password")        
-        user.change_password()
-        
-    
+        print("New Password")
+        if not user.change_password():
+            print("Failed")
+            sys.exit(-1)
+        print("Successfully changed password")
+
+
 if __name__ == "__main__":
     main()
-    
-        
